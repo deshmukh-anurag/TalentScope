@@ -1,0 +1,96 @@
+app talentscope {
+  wasp: {
+    version: "^0.18.1"
+  },
+  title: "TalentScope - AI Interview Platform",
+  head: [
+    "<link rel='icon' href='/favicon.ico' />",
+  ],
+  auth: {
+    userEntity: User,
+    methods: {
+      email: {
+        fromField: {
+          name: "TalentScope",
+          email: "hello@talentscope.com"
+        },
+        userSignupFields: import { userSignupFields } from "@src/auth/email/userSignupFields",
+        emailVerification: {
+          clientRoute: EmailVerificationRoute,
+        },
+        passwordReset: {
+          clientRoute: PasswordResetRoute,
+        }
+      },
+    },
+    onAuthSucceededRedirectTo: "/interview",
+    onAuthFailedRedirectTo: "/login",
+  },
+  emailSender: {
+    provider: Dummy,
+  },
+  client: {
+    rootComponent: import { App } from "@src/App.tsx",
+  }
+}
+
+// #region Auth
+route LoginRoute { path: "/login", to: LoginPage }
+page LoginPage {
+  component: import { LoginPage } from "@src/auth/email/LoginPage.tsx"
+}
+
+route SignupRoute { path: "/signup", to: SignupPage }
+page SignupPage {
+  component: import { SignupPage } from "@src/auth/email/SignupPage.tsx"
+}
+
+route RequestPasswordResetRoute { path: "/request-password-reset", to: RequestPasswordResetPage }
+page RequestPasswordResetPage {
+  component: import { RequestPasswordResetPage } from "@src/auth/email/RequestPasswordResetPage.tsx",
+}
+
+route PasswordResetRoute { path: "/password-reset", to: PasswordResetPage }
+page PasswordResetPage {
+  component: import { PasswordResetPage } from "@src/auth/email/PasswordResetPage.tsx",
+}
+
+route EmailVerificationRoute { path: "/email-verification", to: EmailVerificationPage }
+page EmailVerificationPage {
+  component: import { EmailVerificationPage } from "@src/auth/email/EmailVerificationPage.tsx",
+}
+// #endregion Auth
+
+// #region Interview
+route InterviewRoute { path: "/interview", to: InterviewPage }
+page InterviewPage {
+  authRequired: true,
+  component: import { InterviewPage } from "@src/interview/InterviewPage"
+}
+
+route ResultsRoute { path: "/results", to: ResultsPage }
+page ResultsPage {
+  authRequired: true,
+  component: import { ResultsPage } from "@src/interview/ResultsPage"
+}
+
+action uploadResume {
+  fn: import { uploadResume } from "@src/interview/actions",
+  entities: [User]
+}
+
+action startInterview {
+  fn: import { startInterview } from "@src/interview/actions",
+  entities: [User]
+}
+
+action submitAnswer {
+  fn: import { submitAnswer } from "@src/interview/actions",
+  entities: [User, TestResult]
+}
+
+query getTestResults {
+  fn: import { getTestResults } from "@src/interview/queries",
+  entities: [TestResult]
+}
+// #endregion Interview
