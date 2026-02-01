@@ -14,6 +14,6 @@ export const userSignupFields = defineUserSignupFields({
     if (data.phone && typeof data.phone !== "string") {
       throw new Error("Phone must be a string.");
     }
-    return data.phone || null;
+    return data.phone ? String(data.phone) : null;
   },
 });
