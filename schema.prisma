@@ -13,7 +13,7 @@ generator client {
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
-  password  String
+  password  String   // Hashed by Wasp
   name      String
   phone     String?
   createdAt DateTime @default(now())
