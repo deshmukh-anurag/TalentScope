@@ -1,0 +1,46 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Use Prisma Schema file to define your entities: https://www.prisma.io/docs/concepts/components/prisma-schema.
+// Run `wasp db migrate-dev` in the CLI to create the database tables,
+// then run `wasp db studio` to open Prisma Studio and view your db models.
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+
+  testResults TestResult[]
+}
+
+model TestResult {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  // Profile information
+  profileName  String
+  profileEmail String
+  profilePhone String?
+  skills       String[] // Array of skills
+  
+  // Interview data
+  answers     Json     // Store answers as JSON
+  summary     String   @db.Text
+  totalScore  Int      // Score 0-100
+  status      String   // completed, interrupted, expired
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([totalScore])
+}
