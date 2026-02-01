@@ -8,16 +8,22 @@ export function SignupPage() {
       <SignupForm
         additionalFields={[
           {
-            name: "username",
+            name: "name",
             type: "input",
-            label: "Username",
+            label: "Name",
             validations: {
-              required: "Username is required",
+              required: "Name is required",
               minLength: {
-                value: 6,
-                message: "Username must be at least 6 characters long",
+                value: 2,
+                message: "Name must be at least 2 characters long",
               },
             },
+          },
+          {
+            name: "phone",
+            type: "input",
+            label: "Phone (optional)",
+            validations: {},
           },
         ]}
       />
