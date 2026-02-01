@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { uploadResume, startInterview, submitAnswer } from 'wasp/client/operations';
 
-const InterviewPage = () => {
+export const InterviewPage = () => {
     // Main state management
     const [currentStep, setCurrentStep] = useState(1); // 1: Upload, 2: Profile, 3: Interview, 4: Complete
     const [loading, setLoading] = useState(false);
@@ -522,5 +522,3 @@ const InterviewPage = () => {
 
     return null;
 };
-
-export default InterviewPage;

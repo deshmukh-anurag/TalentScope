@@ -2,7 +2,7 @@ import React from 'react';
 import { useQuery } from 'wasp/client/operations';
 import { getTestResults } from 'wasp/client/operations';
 
-const ResultsPage = () => {
+export const ResultsPage = () => {
     const { data: results, isLoading, error } = useQuery(getTestResults);
 
     if (isLoading) {
@@ -116,5 +116,3 @@ const ResultsPage = () => {
         </div>
     );
 };
-
-export default ResultsPage;
