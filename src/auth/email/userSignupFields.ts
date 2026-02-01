@@ -1,6 +1,9 @@
 import { defineUserSignupFields } from "wasp/server/auth";
 
 export const userSignupFields = defineUserSignupFields({
+  email: (data) => {
+    return data.email as string;
+  },
   name: (data) => {
     if (typeof data.name !== "string") {
       throw new Error("Name is required.");
