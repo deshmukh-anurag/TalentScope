@@ -29,9 +29,6 @@ app talentscope {
   emailSender: {
     provider: Dummy,
   },
-  server: {
-    setupFn: import { serverSetup } from "@src/server/serverSetup"
-  },
   client: {
     rootComponent: import { App } from "@src/App.tsx",
   }
@@ -77,9 +74,11 @@ page ResultsPage {
   component: import { ResultsPage } from "@src/interview/ResultsPage"
 }
 
-action uploadResume {
-  fn: import { uploadResume } from "@src/interview/actions",
-  entities: [User]
+// Custom API endpoint for file upload with multer
+api uploadResumeAPI {
+  fn: import { uploadResumeAPI } from "@src/interview/api",
+  middlewareConfigFn: import { uploadMiddleware } from "@src/interview/api",
+  httpRoute: (POST, "/api/upload-resume")
 }
 
 action startInterview {

@@ -1,101 +1,10 @@
 // Interview actions for Wasp
-import type { UploadResume, StartInterview, SubmitAnswer } from "wasp/server/operations";
+import type { StartInterview, SubmitAnswer } from "wasp/server/operations";
 import { HttpError } from "wasp/server";
 import { generateInterviewQuestions, generateInterviewSummary, generateInterviewScore } from "./aiUtils";
-import pdf from "pdf-parse";
-import mammoth from "mammoth";
 
 // In-memory store for interview sessions (use Redis in production)
 const interviewSessions = new Map<string, any>();
-
-// Parse resume data using regex patterns
-const parseResumeData = (text: string) => {
-  const extractedData: any = {
-    name: null,
-    email: null,
-    phone: null,
-    skills: [],
-    summary: null,
-  };
-
-  // Extract email
-  const emailMatch = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
-  if (emailMatch) extractedData.email = emailMatch[0];
-
-  // Extract phone
-  const phoneMatch = text.match(/(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-  if (phoneMatch) extractedData.phone = phoneMatch[0];
-
-  // Extract name (usually first line or near contact info)
-  const lines = text.split('\n').filter((line: string) => line.trim());
-  if (lines.length > 0) {
-    extractedData.name = lines[0].trim();
-  }
-
-  // Extract skills
-  const skillsSection = text.match(/(?:skills|technologies|technical skills)[\s\S]*?(?=\n\n|\n[A-Z]|$)/i);
-  if (skillsSection) {
-    const skillsText = skillsSection[0];
-    const skills = skillsText.match(/\b(?:JavaScript|Python|Java|React|Node\.js|HTML|CSS|SQL|MongoDB|Express|Angular|Vue|Docker|AWS|Git)\b/gi);
-    if (skills) extractedData.skills = [...new Set(skills)];
-  }
-
-  return extractedData;
-};
-
-// Upload resume action
-export const uploadResume: UploadResume<{ fileData: string; mimeType: string }, any> = async (args, context) => {
-  try {
-    const { fileData, mimeType } = args;
-    
-    if (!fileData || !mimeType) {
-      throw new HttpError(400, "No file data provided");
-    }
-
-    const allowedMimeTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-
-    if (!allowedMimeTypes.includes(mimeType)) {
-      throw new HttpError(400, "Invalid file format. Please upload PDF, DOC, or DOCX");
-    }
-
-    // Convert base64 to buffer
-    const buffer = Buffer.from(fileData, 'base64');
-    
-    let extractedText = '';
-    
-    if (mimeType === 'application/pdf') {
-      const data = await pdf(buffer);
-      extractedText = data.text;
-    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      const result = await mammoth.extractRawText({ buffer });
-      extractedText = result.value;
-    }
-
-    const parsedData = parseResumeData(extractedText);
-
-    return {
-      success: true,
-      message: 'Resume parsed successfully',
-      data: {
-        extractedData: parsedData,
-        missingFields: {
-          name: !parsedData.name,
-          email: !parsedData.email,
-          phone: !parsedData.phone,
-          skills: parsedData.skills.length === 0
-        }
-      }
-    };
-
-  } catch (error: any) {
-    console.error('Error parsing resume:', error);
-    throw new HttpError(500, error.message || 'Failed to parse resume');
-  }
-};
 
 // Start interview action
 export const startInterview: StartInterview<{ profile: any }, any> = async (args, context) => {

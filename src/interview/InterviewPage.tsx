@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { uploadResume, startInterview, submitAnswer } from 'wasp/client/operations';
+import { startInterview, submitAnswer } from 'wasp/client/operations';
 
 export const InterviewPage = () => {
     // Main state management
@@ -83,7 +83,7 @@ export const InterviewPage = () => {
         setDragOver(false);
     };
 
-    // Upload resume and parse
+    // Upload resume and parse (using FormData like MERN project)
     const handleResumeUpload = async () => {
         if (!selectedFile) return;
 
@@ -99,36 +99,33 @@ export const InterviewPage = () => {
                 return;
             }
 
-            // Convert file to base64
-            const fileData = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64 = (reader.result as string).split(',')[1];
-                    resolve(base64);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(selectedFile);
+            // Create FormData and append file (same as MERN frontend)
+            const formData = new FormData();
+            formData.append('resume', selectedFile);
+
+            // Call custom API endpoint
+            const response = await fetch('/api/upload-resume', {
+                method: 'POST',
+                body: formData,
+                // Note: Don't set Content-Type header - browser sets it automatically with boundary
             });
 
-            const response = await uploadResume({ 
-                fileData, 
-                mimeType: selectedFile.type 
-            });
+            const data = await response.json();
 
-            if (response.success) {
-                setExtractedData(response.data.extractedData);
-                setMissingFields(response.data.missingFields);
+            if (data.success) {
+                setExtractedData(data.data.extractedData);
+                setMissingFields(data.data.missingFields);
                 
                 // Pre-fill profile form
                 setProfileData({
-                    name: response.data.extractedData.name || '',
-                    email: response.data.extractedData.email || '',
-                    phone: response.data.extractedData.phone || '',
-                    skills: response.data.extractedData.skills.join(', ') || '',
+                    name: data.data.extractedData.name || '',
+                    email: data.data.extractedData.email || '',
+                    phone: data.data.extractedData.phone || '',
+                    skills: data.data.extractedData.skills.join(', ') || '',
                 });
                 setCurrentStep(2);
             } else {
-                setError(response.message);
+                setError(data.message);
             }
         } catch (err: any) {
             setError(err.message || 'Failed to upload resume. Please try again.');
