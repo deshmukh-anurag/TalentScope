@@ -91,6 +91,14 @@ export const InterviewPage = () => {
         setError('');
         
         try {
+            // Check file size (max 5MB)
+            const maxSize = 5 * 1024 * 1024; // 5MB
+            if (selectedFile.size > maxSize) {
+                setError('File size must be less than 5MB');
+                setLoading(false);
+                return;
+            }
+
             // Convert file to base64
             const fileData = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
