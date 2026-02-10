@@ -29,6 +29,9 @@ app talentscope {
   emailSender: {
     provider: Dummy,
   },
+  server: {
+    setupFn: import { serverSetup } from "@src/server/serverSetup"
+  },
   client: {
     rootComponent: import { App } from "@src/App.tsx",
   }

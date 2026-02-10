@@ -6,10 +6,18 @@ import mammoth from 'mammoth';
 import fs from 'fs';
 import path from 'path';
 
+// Get absolute path to uploads directory (server runs from .wasp/out/server)
+const uploadsDir = path.join(process.cwd(), '../../../uploads');
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 // Configure multer for file uploads (same as MERN backend)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + '-' + file.originalname);
@@ -79,18 +87,49 @@ const parseResumeData = (text: string) => {
 
 // Middleware configuration for multer
 export const uploadMiddleware: MiddlewareConfigFn = (middlewareConfig) => {
-  middlewareConfig.set('multer', upload.single('resume'));
+  // Add CORS middleware BEFORE multer to handle preflight and credentials
+  middlewareConfig.set('cors', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+  
+  middlewareConfig.set('multer', (req, res, next) => {
+    upload.single('resume')(req, res, (err) => {
+      if (err) {
+        console.error('Multer error:', err);
+        return res.status(400).json({ success: false, message: err.message });
+      }
+      next();
+    });
+  });
   return middlewareConfig;
 };
 
 // API handler for resume upload (same as MERN controller)
-export const uploadResumeAPI = async (req: any, res: any) => {
+export const uploadResumeAPI = async (req: any, res: any, context: any) => {
+  console.log('=== Upload Resume API Called ===');
+  console.log('Request method:', req.method);
+  console.log('Request headers:', req.headers);
+  console.log('Request file:', req.file);
+  console.log('Request body:', req.body);
+  
   try {
     console.log("backend called for upload");
     
     if (!req.file) {
+      console.log('No file found in request');
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
+
+    console.log('File received:', req.file.originalname, req.file.mimetype, req.file.size);
 
     const allowedMimeTypes = [
       'application/pdf',
@@ -99,22 +138,25 @@ export const uploadResumeAPI = async (req: any, res: any) => {
     ];
 
     if (!allowedMimeTypes.includes(req.file.mimetype)) {
+      console.log('Invalid mime type:', req.file.mimetype);
       return res.status(400).json({
         success: false,
         message: 'Invalid file format. Please upload PDF, DOC, or DOCX'
       });
     }
 
+    console.log('Extracting text from file:', req.file.path);
     const extractedText = await extractTextFromFile(req.file.path, req.file.mimetype);
-    console.log("extracted text: ", extractedText);
+    console.log("extracted text length:", extractedText.length);
     
     const parsedData = parseResumeData(extractedText);
     console.log("parsed data: ", parsedData);
     
     // Delete temporary file
     fs.unlinkSync(req.file.path);
+    console.log('Temp file deleted');
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       message: 'Resume parsed successfully',
       data: {
@@ -126,13 +168,18 @@ export const uploadResumeAPI = async (req: any, res: any) => {
           skills: parsedData.skills.length === 0
         }
       }
-    });
+    };
 
-  } catch (error) {
+    console.log('Sending response:', JSON.stringify(responseData));
+    return res.status(200).json(responseData);
+
+  } catch (error: any) {
     console.error('Error parsing resume:', error);
+    console.error('Error stack:', error.stack);
     return res.status(500).json({
       success: false,
-      message: 'Failed to parse resume'
+      message: 'Failed to parse resume',
+      error: error.message
     });
   }
 };

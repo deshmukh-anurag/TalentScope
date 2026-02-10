@@ -107,14 +107,39 @@ export const InterviewPage = () => {
             const formData = new FormData();
             formData.append('resume', selectedFile);
 
+            console.log('Uploading file:', selectedFile.name, selectedFile.type);
+
             // Call custom API endpoint
-            const response = await fetch('/api/upload-resume', {
+            // Use explicit server URL in development because the Vite proxy may not be active in some setups
+            const serverUrl = (import.meta as any).env?.VITE_WASP_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${serverUrl}/api/upload-resume`, {
                 method: 'POST',
                 body: formData,
+                credentials: 'include', // Important: send cookies for auth
                 // Note: Don't set Content-Type header - browser sets it automatically with boundary
             });
 
-            const data = await response.json();
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+
+            // Check if response is ok before parsing JSON
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Server error:', errorText);
+                throw new Error(`Server returned ${response.status}: ${errorText}`);
+            }
+
+            const responseText = await response.text();
+            console.log('Response text:', responseText);
+
+            // Try to parse JSON
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (parseError) {
+                console.error('Failed to parse JSON:', parseError);
+                throw new Error('Invalid response from server');
+            }
 
             if (data.success) {
                 setExtractedData(data.data.extractedData);
@@ -132,6 +157,7 @@ export const InterviewPage = () => {
                 setError(data.message);
             }
         } catch (err: any) {
+            console.error('Upload error:', err);
             setError(err.message || 'Failed to upload resume. Please try again.');
         } finally {
             setLoading(false);
