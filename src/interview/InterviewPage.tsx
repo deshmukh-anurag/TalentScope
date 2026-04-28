@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { startInterview, submitAnswer } from 'wasp/client/operations';
+import { VoiceInterviewPage } from './VoiceInterviewPage';
+
+type InterviewMode = 'text' | 'voice' | null;
 
 export const InterviewPage = () => {
     // Main state management
     const [currentStep, setCurrentStep] = useState(1); // 1: Upload, 2: Profile, 3: Interview, 4: Complete
+    const [interviewMode, setInterviewMode] = useState<InterviewMode>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     
@@ -134,18 +138,18 @@ export const InterviewPage = () => {
         }
     };
 
-    // Complete profile and start interview
-    const handleProfileComplete = async () => {
+    // Complete profile and start a TEXT interview (voice path is handled by VoiceInterviewPage).
+    const handleStartTextInterview = async () => {
         setLoading(true);
         setError('');
-        
+
         try {
             const profileToSubmit = {
                 ...profileData,
                 skills: profileData.skills.split(',').map((s: string) => s.trim())
             };
 
-            const interviewResponse = await startInterview({ profile: profileToSubmit });
+            const interviewResponse = await startInterview({ profile: profileToSubmit, voiceMode: false });
 
             if (interviewResponse.success) {
                 setSessionId(interviewResponse.data.sessionId);
@@ -155,6 +159,7 @@ export const InterviewPage = () => {
                 setTimeLimit(interviewResponse.data.timeLimit);
                 setTimeLeft(interviewResponse.data.timeLimit);
                 setQuestionStartTime(new Date(interviewResponse.data.questionStartTime));
+                setInterviewMode('text');
                 setCurrentStep(3);
             } else {
                 setError(interviewResponse.message);
@@ -164,6 +169,17 @@ export const InterviewPage = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleStartVoiceInterview = () => {
+        const skillsArr = profileData.skills.split(',').map((s) => s.trim()).filter(Boolean);
+        if (!profileData.name || !profileData.email || skillsArr.length === 0) {
+            setError('Please fill in your name, email, and at least one skill before starting.');
+            return;
+        }
+        setError('');
+        setInterviewMode('voice');
+        setCurrentStep(3);
     };
 
     // Submit answer
@@ -377,20 +393,40 @@ export const InterviewPage = () => {
                             </div>
                         </div>
 
-                        <div className="mt-8 flex justify-between">
-                            <button
-                                onClick={() => setCurrentStep(1)}
-                                className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                            >
-                                Back
-                            </button>
-                            <button
-                                onClick={handleProfileComplete}
-                                disabled={loading}
-                                className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {loading ? 'Starting Interview...' : 'Start Interview'}
-                            </button>
+                        <div className="mt-8">
+                            <p className="text-center text-sm text-gray-500 mb-4">Choose your interview format</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button
+                                    onClick={handleStartTextInterview}
+                                    disabled={loading}
+                                    className="group relative p-5 rounded-xl border-2 border-gray-200 hover:border-blue-500 bg-white hover:bg-blue-50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <div className="text-3xl mb-2">⌨️</div>
+                                    <div className="font-semibold text-gray-900">Text Interview</div>
+                                    <div className="text-xs text-gray-500 mt-1">Type your answers. Standard time limits.</div>
+                                </button>
+                                <button
+                                    onClick={handleStartVoiceInterview}
+                                    disabled={loading}
+                                    className="group relative p-5 rounded-xl border-2 border-emerald-300 hover:border-emerald-500 bg-gradient-to-br from-emerald-50 to-white text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <span className="absolute top-2 right-2 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500 text-white rounded-full px-2 py-0.5">New</span>
+                                    <div className="text-3xl mb-2">🎙️</div>
+                                    <div className="font-semibold text-gray-900">Voice Interview</div>
+                                    <div className="text-xs text-gray-500 mt-1">Speak your answers. Half the time limit.</div>
+                                </button>
+                            </div>
+                            <div className="mt-6 flex justify-start">
+                                <button
+                                    onClick={() => setCurrentStep(1)}
+                                    className="px-5 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                                >
+                                    Back
+                                </button>
+                            </div>
+                            {loading && (
+                                <p className="mt-4 text-sm text-center text-gray-500">Starting interview...</p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -398,7 +434,30 @@ export const InterviewPage = () => {
         );
     }
 
-    // Step 3: Interview
+    // Step 3 (voice): full-screen Google Meet style takeover
+    if (currentStep === 3 && interviewMode === 'voice') {
+        const profileForVoice = {
+            ...profileData,
+            skills: profileData.skills.split(',').map((s) => s.trim()).filter(Boolean)
+        };
+        return (
+            <VoiceInterviewPage
+                profile={profileForVoice}
+                onComplete={(summary) => {
+                    setSessionId(summary.sessionId);
+                    setTotalQuestions(summary.totalQuestions);
+                    setInterviewComplete(true);
+                    setCurrentStep(4);
+                }}
+                onExit={() => {
+                    setInterviewMode(null);
+                    setCurrentStep(2);
+                }}
+            />
+        );
+    }
+
+    // Step 3 (text): existing typed-answer flow
     if (currentStep === 3) {
         return (
             <div className="min-h-screen bg-gray-50 py-8 px-4">
