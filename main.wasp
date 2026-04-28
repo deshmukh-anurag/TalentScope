@@ -1,6 +1,6 @@
 app talentscope {
   wasp: {
-    version: "^0.18.1"
+    version: "^0.21.1"
   },
   title: "TalentScope - AI Interview Platform",
   head: [
