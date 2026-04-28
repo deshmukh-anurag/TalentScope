@@ -91,6 +91,10 @@ action submitAnswer {
   entities: [User, TestResult]
 }
 
+action transcribeAudio {
+  fn: import { transcribeAudio } from "@src/interview/actions"
+}
+
 query getTestResults {
   fn: import { getTestResults } from "@src/interview/queries",
   entities: [TestResult]
