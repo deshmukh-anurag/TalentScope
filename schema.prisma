@@ -44,6 +44,7 @@ model TestResult {
   summary    String @db.Text
   totalScore Int // Score 0-100
   status     String // completed, interrupted, expired
+  mode       String @default("text") // text | voice
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
