@@ -34,6 +34,55 @@ async function callModelsWithPrompt(prompt: string) {
   throw new Error("All candidate models failed or are not available for this API key.");
 }
 
+// Transcribe a base64-encoded audio clip via Gemini's inline audio support.
+// We try a few models because the same API key doesn't always have access
+// to every audio-capable model — the first one that works wins.
+const TRANSCRIBE_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-pro"
+];
+
+const TRANSCRIBE_PROMPT =
+  "You are a strict speech-to-text transcriber. Transcribe the user's spoken " +
+  "answer in the audio clip exactly as they said it, in English. " +
+  "Return ONLY the raw transcript text — no quotes, no markdown, no labels, " +
+  "no commentary. If the clip is silent or unintelligible, return an empty string.";
+
+export const transcribeAudioClip = async (
+  base64Audio: string,
+  mimeType: string = "audio/webm"
+): Promise<string> => {
+  if (!base64Audio || base64Audio.length < 100) {
+    console.warn("[transcribe] empty/short audio payload");
+    return "";
+  }
+
+  const audioPart = {
+    inlineData: { mimeType, data: base64Audio }
+  };
+
+  let lastErr: any = null;
+  for (const modelName of TRANSCRIBE_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent([
+        { text: TRANSCRIBE_PROMPT },
+        audioPart
+      ]);
+      const text = (await result.response.text()).trim();
+      console.log(`[transcribe] ok via ${modelName} (${text.length} chars)`);
+      return text;
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`[transcribe] ${modelName} failed:`, err?.message || err);
+    }
+  }
+  console.error("[transcribe] all models failed:", lastErr?.message || lastErr);
+  return "";
+};
+
 export const generateInterviewQuestions = async (profile: any) => {
   const createPrompt = (prof: any) => {
     return `Based on this candidate profile:
