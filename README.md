@@ -12,6 +12,10 @@
 [![Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://deepmind.google/gemini)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
 
+[![CI](https://github.com/deshmukh-anurag/TalentScope/actions/workflows/ci.yml/badge.svg)](https://github.com/deshmukh-anurag/TalentScope/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-Vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white)](./tests)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.json)
+
 ![Question Time](https://img.shields.io/badge/Question_Time-↓_50%25-success?style=flat-square)
 ![Silence Detection](https://img.shields.io/badge/Auto_Submit_Accuracy->95%25-blue?style=flat-square)
 ![Admin Overhead](https://img.shields.io/badge/Admin_Overhead-↓_70%25-orange?style=flat-square)
@@ -83,12 +87,13 @@ TalentScope is a full-stack AI interview platform that conducts **voice and text
 |:---|:---|
 | **Framework** | Wasp (React + Node.js + Prisma) |
 | **Frontend** | React, Tailwind CSS, Vite |
-| **AI** | Google Gemini API (questions + scoring) |
-| **Voice** | Web Speech API (STT) + Browser TTS |
-| **Audio** | Web Audio API — FFT AnalyserNode |
-| **Database** | PostgreSQL + Prisma ORM |
+| **AI** | Google Gemini API (questions, resume parsing, scoring, transcription) |
+| **Voice** | Gemini speech-to-text + Browser TTS (Web Speech API) |
+| **Audio** | Web Audio API — FFT AnalyserNode for silence detection |
+| **Database** | PostgreSQL + Prisma ORM (persisted interview sessions) |
 | **Auth** | Wasp built-in email auth |
-| **File Parsing** | PDF & DOCX resume extraction |
+| **File Parsing** | AI-powered PDF & DOCX resume extraction (regex fallback) |
+| **Testing / CI** | Vitest unit tests + GitHub Actions |
 
 ---
 
@@ -103,21 +108,36 @@ git clone https://github.com/deshmukh-anurag/TalentScope.git
 cd TalentScope
 
 # 3. Configure environment
-# Create .env.server:
-echo "DATABASE_URL=postgresql://postgres:password@localhost:5432/talentscope" >> .env.server
-echo "GEMINI_API_KEY=your_key_here" >> .env.server
+cp .env.server.example .env.server
+# then edit .env.server and set GEMINI_API_KEY
 
-# 4. Start DB (Docker)
-docker run --name postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres
-
-# 5. Migrate & run
+# 4. Start the managed Postgres (Wasp + Docker), then migrate & run
+wasp db start          # in a separate terminal — sets DATABASE_URL for you
 wasp db migrate-dev
 wasp start
 ```
 
 App: `http://localhost:3000` · API: `http://localhost:3001`
 
-Get Gemini API key: [makersuite.google.com/app/apikey](https://makersuite.google.com/app/apikey)
+> Note: `wasp start` serves the client on port **3000**. Free that port first
+> if another dev server is using it, otherwise the client falls back to a
+> different port and auth/CORS won't line up.
+
+Get a Gemini API key: [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+
+---
+
+## 🧪 Testing & Quality
+
+```bash
+npm run lint        # ESLint (strict, no `any`)
+npm test            # Vitest unit tests
+npm run typecheck   # tsc --noEmit (run after `wasp start` generates the SDK)
+```
+
+Pure logic — résumé field extraction, question/score validation, and resume
+normalization — is covered by [Vitest unit tests](./tests), and every push runs
+**lint + tests** through [GitHub Actions](./.github/workflows/ci.yml).
 
 ---
 
@@ -126,18 +146,30 @@ Get Gemini API key: [makersuite.google.com/app/apikey](https://makersuite.google
 ```
 TalentScope/
 ├── src/
+│   ├── landing/
+│   │   └── LandingPage.tsx      # Marketing landing page (public)
 │   ├── interview/
-│   │   ├── InterviewPage.tsx    # Main interview UI + voice controls
-│   │   ├── ResultsPage.tsx      # Score breakdown & AI feedback
-│   │   ├── actions.ts           # Server actions (submit, score)
-│   │   ├── queries.ts           # Data fetching
-│   │   └── aiUtils.ts           # Gemini integration
-│   ├── auth/                    # Login / signup pages
-│   ├── shared/                  # Shared components
+│   │   ├── InterviewPage.tsx    # Upload → profile → text interview flow
+│   │   ├── VoiceInterviewPage.tsx  # Full-screen voice interview room
+│   │   ├── ResultsPage.tsx      # Analytics dashboard + per-question review
+│   │   ├── actions.ts           # Server actions (start, submit, transcribe)
+│   │   ├── queries.ts           # Typed data fetching
+│   │   ├── aiUtils.ts           # Gemini integration (questions, scoring, parsing)
+│   │   ├── resumeParser.ts      # PDF/DOCX extraction + AI parse orchestration
+│   │   ├── resumeFields.ts      # Pure, unit-tested regex field extraction
+│   │   └── voiceUtils.ts        # Browser TTS, MediaRecorder, FFT silence detection
+│   ├── server/
+│   │   └── logger.ts            # Leveled structured logging
+│   ├── auth/                    # Login / signup / verification pages
+│   ├── shared/
+│   │   ├── types.ts             # Shared, end-to-end domain types
+│   │   └── components/          # Design-system primitives
 │   └── App.tsx
-├── schema.prisma                # DB models
+├── tests/                       # Vitest unit tests
+├── .github/workflows/ci.yml     # Lint + test pipeline
+├── schema.prisma                # DB models (User, InterviewSession, TestResult)
 ├── main.wasp                    # App config & routes
-└── uploads/                     # Resume storage
+└── uploads/                     # Temporary resume storage (auto-cleaned)
 ```
 
 ---
