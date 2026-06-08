@@ -311,15 +311,19 @@ export const normalizeParsedResume = (parsed: unknown): ParsedResume => {
     const s = typeof v === "string" ? v.trim() : "";
     return s.length > 0 ? s : null;
   };
-  const skills = Array.isArray(obj.skills)
-    ? Array.from(
-        new Set(
-          obj.skills
-            .map((s) => (typeof s === "string" ? s.trim() : ""))
-            .filter((s) => s.length > 0)
-        )
-      ).slice(0, 20)
-    : [];
+
+  // Dedupe skills case-insensitively (keeping the first casing seen) and cap at 20.
+  const skills: string[] = [];
+  if (Array.isArray(obj.skills)) {
+    const seen = new Set<string>();
+    for (const raw of obj.skills) {
+      const s = typeof raw === "string" ? raw.trim() : "";
+      if (!s || seen.has(s.toLowerCase())) continue;
+      seen.add(s.toLowerCase());
+      skills.push(s);
+      if (skills.length >= 20) break;
+    }
+  }
 
   return {
     name: str(obj.name),
