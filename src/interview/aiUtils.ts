@@ -1,5 +1,15 @@
 // AI utilities for generating interview questions and summaries
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createLogger } from "../server/logger";
+import type {
+  AnswerRecord,
+  CandidateProfile,
+  Difficulty,
+  InterviewQuestion,
+  ScoreBreakdown,
+} from "../shared/types";
+
+const log = createLogger("ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -10,7 +20,7 @@ const CANDIDATE_MODELS = [
   "gemini-pro"
 ];
 
-const DEFAULT_QUESTION_FALLBACK = [
+const DEFAULT_QUESTION_FALLBACK: InterviewQuestion[] = [
   { question: "Tell me about yourself.", difficulty: "easy", timeLimit: 20 },
   { question: "What is a variable in JavaScript?", difficulty: "easy", timeLimit: 20 },
   { question: "Explain the difference between SQL and NoSQL databases.", difficulty: "medium", timeLimit: 60 },
@@ -19,7 +29,10 @@ const DEFAULT_QUESTION_FALLBACK = [
   { question: "How would you design a simple API rate limiter?", difficulty: "hard", timeLimit: 120 }
 ];
 
-async function callModelsWithPrompt(prompt: string) {
+const errMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
+async function callModelsWithPrompt(prompt: string): Promise<{ modelName: string; text: string }> {
   for (const modelName of CANDIDATE_MODELS) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName });
@@ -27,12 +40,16 @@ async function callModelsWithPrompt(prompt: string) {
       const response = await result.response;
       const text = await response.text();
       return { modelName, text };
-    } catch (err: any) {
-      console.warn(`Model ${modelName} failed:`, err?.message || err);
+    } catch (err) {
+      log.warn(`model ${modelName} failed`, errMessage(err));
     }
   }
   throw new Error("All candidate models failed or are not available for this API key.");
 }
+
+/** Strip markdown code fences that models sometimes wrap JSON in. */
+export const stripCodeFences = (text: string): string =>
+  text.replace(/```(?:json)?\n?/g, "").replace(/```\n?/g, "").trim();
 
 // Transcribe a base64-encoded audio clip via Gemini's inline audio support.
 // We try a few models because the same API key doesn't always have access
@@ -55,7 +72,7 @@ export const transcribeAudioClip = async (
   mimeType: string = "audio/webm"
 ): Promise<string> => {
   if (!base64Audio || base64Audio.length < 100) {
-    console.warn("[transcribe] empty/short audio payload");
+    log.warn("transcribe: empty/short audio payload");
     return "";
   }
 
@@ -63,7 +80,7 @@ export const transcribeAudioClip = async (
     inlineData: { mimeType, data: base64Audio }
   };
 
-  let lastErr: any = null;
+  let lastErr: unknown = null;
   for (const modelName of TRANSCRIBE_MODELS) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName });
@@ -72,19 +89,21 @@ export const transcribeAudioClip = async (
         audioPart
       ]);
       const text = (await result.response.text()).trim();
-      console.log(`[transcribe] ok via ${modelName} (${text.length} chars)`);
+      log.debug(`transcribe ok via ${modelName} (${text.length} chars)`);
       return text;
-    } catch (err: any) {
+    } catch (err) {
       lastErr = err;
-      console.warn(`[transcribe] ${modelName} failed:`, err?.message || err);
+      log.warn(`transcribe: ${modelName} failed`, errMessage(err));
     }
   }
-  console.error("[transcribe] all models failed:", lastErr?.message || lastErr);
+  log.error("transcribe: all models failed", errMessage(lastErr));
   return "";
 };
 
-export const generateInterviewQuestions = async (profile: any) => {
-  const createPrompt = (prof: any) => {
+export const generateInterviewQuestions = async (
+  profile: CandidateProfile
+): Promise<InterviewQuestion[]> => {
+  const createPrompt = (prof: CandidateProfile) => {
     return `Based on this candidate profile:
 Skills: ${prof.skills && Array.isArray(prof.skills) ? prof.skills.join(", ") : "MERN STACK"}
 Experience: ${prof.experience || "Undergraduate"}
@@ -108,51 +127,55 @@ Example format:
     const prompt = createPrompt(profile);
     const { modelName, text } = await callModelsWithPrompt(prompt);
 
-    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr: any) {
-      throw new Error(`Failed to parse JSON from model ${modelName}: ${parseErr.message}`);
-    }
-
-    if (!Array.isArray(parsed)) {
-      throw new Error(`Model ${modelName} returned JSON that is not an array.`);
-    }
-
-    const normalized = parsed.map((item: any, idx: number) => {
-      if (!item || typeof item !== "object") {
-        throw new Error(`Item ${idx} is not an object in model ${modelName} output.`);
-      }
-      const { question, difficulty, timeLimit } = item;
-      if (!question || !difficulty || (timeLimit === undefined || timeLimit === null)) {
-        throw new Error(`Missing keys in item ${idx} from model ${modelName}. Required: question, difficulty, timeLimit`);
-      }
-
-      const normalizedDifficulty = String(difficulty).toLowerCase();
-      const normalizedTimeLimit = Number(timeLimit);
-
-      if (![20, 60, 120].includes(normalizedTimeLimit)) {
-        throw new Error(`Invalid timeLimit in item ${idx} from model ${modelName}. Allowed values: 20,60,120`);
-      }
-
-      return {
-        question: String(question),
-        difficulty: normalizedDifficulty,
-        timeLimit: normalizedTimeLimit
-      };
-    });
-
-    return normalized;
-  } catch (error: any) {
-    console.error("Error generating AI questions:", error?.message || error);
+    const parsed: unknown = JSON.parse(stripCodeFences(text));
+    return normalizeQuestions(parsed, modelName);
+  } catch (error) {
+    log.error("error generating AI questions", errMessage(error));
     return DEFAULT_QUESTION_FALLBACK;
   }
 };
 
-export const generateInterviewSummary = async (interviewResults: any[]) => {
-  const createSummaryPrompt = (results: any[]) => {
+const VALID_DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
+
+/** Validate + normalize a model's raw question JSON into typed questions. */
+export const normalizeQuestions = (parsed: unknown, source = "model"): InterviewQuestion[] => {
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${source} returned JSON that is not an array.`);
+  }
+
+  return parsed.map((item, idx): InterviewQuestion => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`Item ${idx} is not an object in ${source} output.`);
+    }
+    const { question, difficulty, timeLimit } = item as Record<string, unknown>;
+    if (!question || !difficulty || timeLimit === undefined || timeLimit === null) {
+      throw new Error(
+        `Missing keys in item ${idx} from ${source}. Required: question, difficulty, timeLimit`
+      );
+    }
+
+    const normalizedDifficulty = String(difficulty).toLowerCase();
+    const normalizedTimeLimit = Number(timeLimit);
+
+    if (!VALID_DIFFICULTIES.includes(normalizedDifficulty as Difficulty)) {
+      throw new Error(`Invalid difficulty in item ${idx} from ${source}.`);
+    }
+    if (![20, 60, 120].includes(normalizedTimeLimit)) {
+      throw new Error(`Invalid timeLimit in item ${idx} from ${source}. Allowed: 20,60,120`);
+    }
+
+    return {
+      question: String(question),
+      difficulty: normalizedDifficulty as Difficulty,
+      timeLimit: normalizedTimeLimit,
+    };
+  });
+};
+
+export const generateInterviewSummary = async (
+  interviewResults: AnswerRecord[]
+): Promise<string> => {
+  const createSummaryPrompt = (results: AnswerRecord[]) => {
     const questionsAndAnswers = results
       .map((item) => {
         return `Question ${item.questionIndex + 1} (${item.question.difficulty}): ${item.question.question}
@@ -179,17 +202,17 @@ Return the summary in a clear, professional format suitable for interview feedba
   try {
     const prompt = createSummaryPrompt(interviewResults);
     const { text } = await callModelsWithPrompt(prompt);
-
-    const summary = text.replace(/```(?:json)?\n?/g, "").replace(/```\n?/g, "").trim();
-    return summary;
-  } catch (error: any) {
-    console.error("Error generating interview summary:", error?.message || error);
+    return stripCodeFences(text);
+  } catch (error) {
+    log.error("error generating interview summary", errMessage(error));
     return "Unable to generate interview summary. Please review the individual responses manually.";
   }
 };
 
-export const generateInterviewScore = async (interviewResults: any[]) => {
-  const createScorePrompt = (results: any[]) => {
+export const generateInterviewScore = async (
+  interviewResults: AnswerRecord[]
+): Promise<ScoreBreakdown> => {
+  const createScorePrompt = (results: AnswerRecord[]) => {
     const questionsAndAnswers = results
       .map((item) => {
         return `Question ${item.questionIndex + 1} (${item.question.difficulty}): ${item.question.question}
@@ -216,37 +239,29 @@ Return ONLY a JSON object in this exact format (no markdown, no backticks):
 
   try {
     const prompt = createScorePrompt(interviewResults);
-    const { modelName, text } = await callModelsWithPrompt(prompt);
-
-    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr: any) {
-      throw new Error(`Failed to parse JSON from model ${modelName}: ${parseErr.message}`);
-    }
-
-    if (!parsed || typeof parsed !== "object" || typeof parsed.score !== "number") {
-      throw new Error(`AI response did not contain a valid 'score' number.`);
-    }
-
-    const scoreValue = Number(parsed.score);
-    const boundedScore = Number.isFinite(scoreValue) ? Math.max(0, Math.min(100, Math.round(scoreValue))) : null;
-
-    if (boundedScore === null) {
-      throw new Error("Score is not a finite number.");
-    }
-
-    return {
-      score: boundedScore,
-      rationale: String(parsed.rationale || parsed.explanation || "No rationale provided.")
-    };
-  } catch (error: any) {
-    console.error("Error generating interview score:", error?.message || error);
+    const { text } = await callModelsWithPrompt(prompt);
+    return parseScore(JSON.parse(stripCodeFences(text)));
+  } catch (error) {
+    log.error("error generating interview score", errMessage(error));
     return {
       score: 50,
       rationale: "Unable to generate an accurate score. This is a default value."
     };
   }
+};
+
+/** Validate + clamp a model's raw score JSON into a 0-100 breakdown. */
+export const parseScore = (parsed: unknown): ScoreBreakdown => {
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("AI response did not contain a valid score object.");
+  }
+  const obj = parsed as Record<string, unknown>;
+  const scoreValue = Number(obj.score);
+  if (!Number.isFinite(scoreValue)) {
+    throw new Error("AI response did not contain a valid 'score' number.");
+  }
+  return {
+    score: Math.max(0, Math.min(100, Math.round(scoreValue))),
+    rationale: String(obj.rationale || obj.explanation || "No rationale provided."),
+  };
 };

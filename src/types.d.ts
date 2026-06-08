@@ -2,8 +2,8 @@ declare module 'pdf-parse' {
   interface PDFData {
     numpages: number;
     numrender: number;
-    info: any;
-    metadata: any;
+    info: Record<string, unknown>;
+    metadata: unknown;
     text: string;
     version: string;
   }
@@ -13,9 +13,14 @@ declare module 'pdf-parse' {
 }
 
 declare module 'mammoth' {
+  interface Message {
+    type: string;
+    message: string;
+  }
+
   interface Result {
     value: string;
-    messages: any[];
+    messages: Message[];
   }
 
   export function extractRawText(options: { path?: string; buffer?: Buffer }): Promise<Result>;
