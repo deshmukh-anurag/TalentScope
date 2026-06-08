@@ -258,16 +258,13 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
         onComplete({ totalQuestions, sessionId });
         return;
       }
-      // queue next
+      // queue next — capture the narrowed (active) data so the closure keeps the type
       const next = resp.data.question;
+      const nextNumber = resp.data.questionNumber;
+      const nextTotal = resp.data.totalQuestions;
       setPhase("between");
       setTimeout(() => {
-        askQuestion(
-          next,
-          resp.data.questionNumber,
-          resp.data.totalQuestions,
-          next.timeLimit
-        );
+        askQuestion(next, nextNumber, nextTotal, next.timeLimit);
       }, 800);
     } catch (err: any) {
       console.error("[flow] submitAnswer error:", err?.message || err);

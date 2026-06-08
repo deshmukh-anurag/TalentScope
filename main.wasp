@@ -86,12 +86,12 @@ api uploadResumeAPI {
 
 action startInterview {
   fn: import { startInterview } from "@src/interview/actions",
-  entities: [User]
+  entities: [User, InterviewSession]
 }
 
 action submitAnswer {
   fn: import { submitAnswer } from "@src/interview/actions",
-  entities: [User, TestResult]
+  entities: [User, TestResult, InterviewSession]
 }
 
 action transcribeAudio {

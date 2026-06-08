@@ -25,7 +25,30 @@ model User {
   
   createdAt DateTime @default(now())
 
-  testResults TestResult[]
+  testResults       TestResult[]
+  interviewSessions InterviewSession[]
+}
+
+// A live interview in progress. Persisted (rather than held in memory) so that
+// sessions survive server restarts and work across multiple server instances.
+model InterviewSession {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  profile              Json // CandidateProfile snapshot
+  questions            Json // InterviewQuestion[]
+  answers              Json   @default("[]") // AnswerRecord[]
+  currentQuestionIndex Int    @default(0)
+  status               String @default("active") // active | completed | abandoned
+  mode                 String @default("text") // text | voice
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model TestResult {
