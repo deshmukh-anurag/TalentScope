@@ -83,8 +83,8 @@ const sizeStyles: Record<ButtonSize, ClassNameValue> = {
 
 const variantStyles: Record<ButtonVariant, ClassNameValue> = {
   primary:
-    "bg-primary-500 hover:bg-primary-400 active:bg-primary-300 text-neutral-800",
+    "bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white shadow-sm transition-colors",
   danger: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800",
   ghost:
-    "bg-transparent text-neutral-800 hover:bg-neutral-100 active:bg-neutral-200",
+    "bg-transparent text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200",
 };

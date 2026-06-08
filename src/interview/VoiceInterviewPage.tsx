@@ -355,7 +355,7 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
   const userListening = phase === "answering" && recState === "speaking";
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col">
       {/* Top bar */}
       <div className="px-6 py-3 flex items-center justify-between border-b border-white/10 bg-black/30 backdrop-blur">
         <div className="flex items-center gap-3">

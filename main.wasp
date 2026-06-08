@@ -37,6 +37,11 @@ app talentscope {
   }
 }
 
+route LandingRoute { path: "/", to: LandingPage }
+page LandingPage {
+  component: import { LandingPage } from "@src/landing/LandingPage"
+}
+
 // #region Auth
 route LoginRoute { path: "/login", to: LoginPage }
 page LoginPage {
