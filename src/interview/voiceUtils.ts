@@ -73,7 +73,9 @@ export const speak = async (text: string): Promise<void> => {
   return new Promise<void>((resolve) => {
     try {
       window.speechSynthesis.cancel(); // clear any queued utterances
-    } catch {}
+    } catch {
+      /* best-effort cleanup; ignore */
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = pickBestVoice(cachedVoices);
@@ -113,7 +115,9 @@ export const speak = async (text: string): Promise<void> => {
           window.speechSynthesis.pause();
           window.speechSynthesis.resume();
         }
-      } catch {}
+      } catch {
+      /* best-effort cleanup; ignore */
+    }
     }, 8000);
   });
 };
@@ -121,7 +125,9 @@ export const speak = async (text: string): Promise<void> => {
 export const cancelSpeech = (): void => {
   try {
     window.speechSynthesis.cancel();
-  } catch {}
+  } catch {
+      /* best-effort cleanup; ignore */
+    }
 };
 
 // -------- Audio recording + silence detection --------
@@ -301,7 +307,9 @@ export const createVoiceRecorder = (
     };
     recorder.start(250); // ms timeslice — flush often so stop() yields full audio
 
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    const Ctx =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     audioCtx = new Ctx();
     const source = audioCtx.createMediaStreamSource(mediaStream);
     analyser = audioCtx.createAnalyser();
@@ -337,10 +345,14 @@ export const createVoiceRecorder = (
 
     try {
       mediaStream?.getTracks().forEach((t) => t.stop());
-    } catch {}
+    } catch {
+      /* best-effort cleanup; ignore */
+    }
     try {
       await audioCtx?.close();
-    } catch {}
+    } catch {
+      /* best-effort cleanup; ignore */
+    }
     mediaStream = null;
     recorder = null;
     audioCtx = null;

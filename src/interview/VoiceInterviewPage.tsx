@@ -10,14 +10,10 @@ import {
   type RecorderState,
   type VoiceRecorder
 } from "./voiceUtils";
+import type { CandidateProfile, InterviewQuestion } from "../shared/types";
 
 interface VoiceInterviewPageProps {
-  profile: {
-    name: string;
-    email: string;
-    phone: string;
-    skills: string[] | string;
-  };
+  profile: CandidateProfile;
   onComplete: (summary: { totalQuestions: number; sessionId: string }) => void;
   onExit: () => void;
 }
@@ -64,6 +60,9 @@ const fmtTime = (s: number): string => {
   return `${m}:${r.toString().padStart(2, "0")}`;
 };
 
+const errMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
   profile,
   onComplete,
@@ -75,7 +74,7 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [questionNumber, setQuestionNumber] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
-  const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null);
 
   const [timeLimit, setTimeLimit] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -159,10 +158,11 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
       await recorder.start();
       setQuestionStartTime(Date.now());
       setPhase("answering");
-    } catch (err: any) {
-      console.error("[flow] mic start failed:", err);
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      console.error("[flow] mic start failed:", errMessage(err));
       setError(
-        err?.name === "NotAllowedError"
+        name === "NotAllowedError"
           ? "Microphone permission denied. Please allow mic access and reload."
           : "Could not access your microphone."
       );
@@ -170,7 +170,7 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
     }
   };
 
-  const askQuestion = async (q: any, qNum: number, total: number, limit: number) => {
+  const askQuestion = async (q: InterviewQuestion, qNum: number, total: number, limit: number) => {
     setCurrentQuestion(q);
     setQuestionNumber(qNum);
     setTotalQuestions(total);
@@ -230,8 +230,8 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
         });
         answerText = (res?.transcript || "").trim();
         console.log(`[flow] transcript len=${answerText.length}`);
-      } catch (err: any) {
-        console.error("[flow] transcribe failed:", err?.message || err);
+      } catch (err) {
+        console.error("[flow] transcribe failed:", errMessage(err));
       }
     } else {
       console.warn(`[flow] blob too small (${blob.size}b) — skipping STT`);
@@ -266,9 +266,9 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
       setTimeout(() => {
         askQuestion(next, nextNumber, nextTotal, next.timeLimit);
       }, 800);
-    } catch (err: any) {
-      console.error("[flow] submitAnswer error:", err?.message || err);
-      setError(err?.message || "Failed to submit answer");
+    } catch (err) {
+      console.error("[flow] submitAnswer error:", errMessage(err));
+      setError(errMessage(err) || "Failed to submit answer");
       setPhase("error");
     } finally {
       submittingRef.current = false;
@@ -288,11 +288,8 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
     unlockTts(); // we're inside a click handler — TTS is now allowed
     setPhase("loading");
     try {
-      const skillsArr = Array.isArray(profile.skills)
-        ? profile.skills
-        : profile.skills.split(",").map((s) => s.trim());
       const resp = await startInterview({
-        profile: { ...profile, skills: skillsArr },
+        profile,
         voiceMode: true
       });
       if (!resp.success) {
@@ -303,9 +300,9 @@ export const VoiceInterviewPage: React.FC<VoiceInterviewPageProps> = ({
       setSessionId(resp.data.sessionId);
       const q = resp.data.question;
       await askQuestion(q, resp.data.questionNumber, resp.data.totalQuestions, q.timeLimit);
-    } catch (err: any) {
-      console.error("[flow] start error:", err?.message || err);
-      setError(err?.message || "Failed to start interview");
+    } catch (err) {
+      console.error("[flow] start error:", errMessage(err));
+      setError(errMessage(err) || "Failed to start interview");
       setPhase("error");
     }
   };
