@@ -6,6 +6,7 @@ import type {
   CandidateProfile,
   Difficulty,
   InterviewQuestion,
+  ParsedResume,
   ScoreBreakdown,
 } from "../shared/types";
 
@@ -263,5 +264,70 @@ export const parseScore = (parsed: unknown): ScoreBreakdown => {
   return {
     score: Math.max(0, Math.min(100, Math.round(scoreValue))),
     rationale: String(obj.rationale || obj.explanation || "No rationale provided."),
+  };
+};
+
+// Cap resume text sent to the model — keeps us well within token limits while
+// still covering the meaningful content of virtually every resume.
+const MAX_RESUME_CHARS = 12000;
+
+/**
+ * Extract structured fields from raw resume text using Gemini.
+ * Throws on failure so callers can fall back to deterministic parsing.
+ */
+export const parseResumeWithAI = async (text: string): Promise<ParsedResume> => {
+  const prompt = `You are an expert technical recruiter parsing a candidate's resume.
+Extract the candidate's details from the resume text below.
+
+Return ONLY a raw JSON object (no markdown, no backticks) with EXACTLY these keys:
+{
+  "name": string | null,          // candidate's full name
+  "email": string | null,
+  "phone": string | null,
+  "skills": string[],             // technical & professional skills, deduplicated, most relevant first, max 20
+  "experience": string | null,    // short summary of seniority/years, e.g. "3 years as a Backend Engineer"
+  "education": string | null,     // highest qualification, e.g. "B.Tech in Computer Science"
+  "summary": string | null        // a concise 1-2 sentence professional summary
+}
+
+If a field cannot be determined, use null (or [] for skills). Do not invent data.
+
+Resume text:
+"""
+${text.slice(0, MAX_RESUME_CHARS)}
+"""`;
+
+  const { text: raw } = await callModelsWithPrompt(prompt);
+  return normalizeParsedResume(JSON.parse(stripCodeFences(raw)));
+};
+
+/** Coerce a model's raw resume JSON into a well-formed ParsedResume. */
+export const normalizeParsedResume = (parsed: unknown): ParsedResume => {
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Resume parse response was not a JSON object.");
+  }
+  const obj = parsed as Record<string, unknown>;
+  const str = (v: unknown): string | null => {
+    const s = typeof v === "string" ? v.trim() : "";
+    return s.length > 0 ? s : null;
+  };
+  const skills = Array.isArray(obj.skills)
+    ? Array.from(
+        new Set(
+          obj.skills
+            .map((s) => (typeof s === "string" ? s.trim() : ""))
+            .filter((s) => s.length > 0)
+        )
+      ).slice(0, 20)
+    : [];
+
+  return {
+    name: str(obj.name),
+    email: str(obj.email),
+    phone: str(obj.phone),
+    skills,
+    experience: str(obj.experience),
+    education: str(obj.education),
+    summary: str(obj.summary),
   };
 };

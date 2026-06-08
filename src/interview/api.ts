@@ -1,111 +1,55 @@
-// Custom API for file upload using multer (matching MERN approach)
-import multer from 'multer';
-import type { MiddlewareConfigFn } from 'wasp/server';
-import pdf from 'pdf-parse';
-import mammoth from 'mammoth';
-import fs from 'fs';
-import path from 'path';
+// Custom API for resume upload + parsing.
+//
+// Wasp's built-in actions can't receive multipart/form-data, so file upload is
+// handled with a dedicated Express route + multer. CORS is intentionally left
+// to Wasp's global middleware (configured from WASP_WEB_CLIENT_URL) — we only
+// inject the multer middleware here.
+import multer from "multer";
+import type { MiddlewareConfigFn } from "wasp/server";
+import fs from "fs";
+import path from "path";
+import { extractTextFromFile, parseResume } from "./resumeParser";
+import { createLogger } from "../server/logger";
+import type { MissingFields } from "../shared/types";
 
-// Get absolute path to uploads directory (server runs from .wasp/out/server)
-const uploadsDir = path.join(process.cwd(), '../../../uploads');
+const log = createLogger("upload");
 
-// Ensure uploads directory exists
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+const ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+// The server runs from .wasp/out/server; resolve uploads at the project root.
+const uploadsDir = path.join(process.cwd(), "../../../uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configure multer for file uploads (same as MERN backend)
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Invalid file format. Please upload a PDF or DOCX file."));
+  },
+});
 
-// Extract text from different file types (same as MERN backend)
-const extractTextFromFile = async (filePath: string, mimetype: string): Promise<string> => {
-  try {
-    let text = '';
-
-    if (mimetype === 'application/pdf') {
-      console.log("file path: ", filePath);
-      const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdf(dataBuffer);
-      text = data.text;
-    } else if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      const result = await mammoth.extractRawText({ path: filePath });
-      text = result.value;
-    } else {
-      throw new Error('Unsupported file type: ' + mimetype);
-    }
-
-    return text;
-  } catch (error) {
-    throw new Error('Failed to extract text from file');
-  }
-};
-
-// Parse resume data using regex patterns (same as MERN backend)
-const parseResumeData = (text: string) => {
-  const extractedData: any = {
-    name: null,
-    email: null,
-    phone: null,
-    skills: [],
-    summary: null,
-  };
-
-  // Extract email
-  const emailMatch = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
-  if (emailMatch) extractedData.email = emailMatch[0];
-
-  // Extract phone
-  const phoneMatch = text.match(/(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-  if (phoneMatch) extractedData.phone = phoneMatch[0];
-
-  // Extract name (usually first line or near contact info)
-  const lines = text.split('\n').filter((line: string) => line.trim());
-  if (lines.length > 0) {
-    extractedData.name = lines[0].trim();
-  }
-
-  // Extract skills
-  const skillsSection = text.match(/(?:skills|technologies|technical skills)[\s\S]*?(?=\n\n|\n[A-Z]|$)/i);
-  if (skillsSection) {
-    const skillsText = skillsSection[0];
-    const skills = skillsText.match(/\b(?:JavaScript|Python|Java|React|Node\.js|HTML|CSS|SQL|MongoDB|Express|Angular|Vue|Docker|AWS|Git)\b/gi);
-    if (skills) extractedData.skills = [...new Set(skills)];
-  }
-
-  console.log("extracted data", extractedData);
-  return extractedData;
-};
-
-// Middleware configuration for multer
 export const uploadMiddleware: MiddlewareConfigFn = (middlewareConfig) => {
-  // Add CORS middleware BEFORE multer to handle preflight and credentials
-  middlewareConfig.set('cors', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    next();
-  });
-  
-  middlewareConfig.set('multer', (req, res, next) => {
-    upload.single('resume')(req, res, (err) => {
+  // NB: do not override the 'cors' middleware here — Wasp's global CORS handles
+  // origins/credentials correctly across dev and production.
+  middlewareConfig.set("multer", (req, res, next) => {
+    upload.single("resume")(req, res, (err: unknown) => {
       if (err) {
-        console.error('Multer error:', err);
-        return res.status(400).json({ success: false, message: err.message });
+        const message = err instanceof Error ? err.message : "File upload failed";
+        log.warn("multer rejected upload", message);
+        return res.status(400).json({ success: false, message });
       }
       next();
     });
@@ -113,73 +57,44 @@ export const uploadMiddleware: MiddlewareConfigFn = (middlewareConfig) => {
   return middlewareConfig;
 };
 
-// API handler for resume upload (same as MERN controller)
-export const uploadResumeAPI = async (req: any, res: any, context: any) => {
-  console.log('=== Upload Resume API Called ===');
-  console.log('Request method:', req.method);
-  console.log('Request headers:', req.headers);
-  console.log('Request file:', req.file);
-  console.log('Request body:', req.body);
-  
+const errMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
+// Express handler — multer has already placed the file on req.file.
+export const uploadResumeAPI = async (
+  req: { file?: { path: string; mimetype: string; originalname: string; size: number } },
+  res: {
+    status: (code: number) => { json: (body: unknown) => unknown };
+  }
+) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "No file uploaded" });
+  }
+
+  const { path: filePath, mimetype, originalname, size } = req.file;
+  log.info("resume received", { name: originalname, mimetype, size });
+
   try {
-    console.log("backend called for upload");
-    
-    if (!req.file) {
-      console.log('No file found in request');
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
-    }
+    const text = await extractTextFromFile(filePath, mimetype);
+    const extractedData = await parseResume(text);
 
-    console.log('File received:', req.file.originalname, req.file.mimetype, req.file.size);
-
-    const allowedMimeTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-
-    if (!allowedMimeTypes.includes(req.file.mimetype)) {
-      console.log('Invalid mime type:', req.file.mimetype);
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file format. Please upload PDF, DOC, or DOCX'
-      });
-    }
-
-    console.log('Extracting text from file:', req.file.path);
-    const extractedText = await extractTextFromFile(req.file.path, req.file.mimetype);
-    console.log("extracted text length:", extractedText.length);
-    
-    const parsedData = parseResumeData(extractedText);
-    console.log("parsed data: ", parsedData);
-    
-    // Delete temporary file
-    fs.unlinkSync(req.file.path);
-    console.log('Temp file deleted');
-
-    const responseData = {
-      success: true,
-      message: 'Resume parsed successfully',
-      data: {
-        extractedData: parsedData,
-        missingFields: {
-          name: !parsedData.name,
-          email: !parsedData.email,
-          phone: !parsedData.phone,
-          skills: parsedData.skills.length === 0
-        }
-      }
+    const missingFields: MissingFields = {
+      name: !extractedData.name,
+      email: !extractedData.email,
+      phone: !extractedData.phone,
+      skills: extractedData.skills.length === 0,
     };
 
-    console.log('Sending response:', JSON.stringify(responseData));
-    return res.status(200).json(responseData);
-
-  } catch (error: any) {
-    console.error('Error parsing resume:', error);
-    console.error('Error stack:', error.stack);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to parse resume',
-      error: error.message
+    return res.status(200).json({
+      success: true,
+      message: "Resume parsed successfully",
+      data: { extractedData, missingFields },
     });
+  } catch (error) {
+    log.error("failed to parse resume", errMessage(error));
+    return res.status(500).json({ success: false, message: "Failed to parse resume" });
+  } finally {
+    // Always clean up the uploaded temp file.
+    fs.promises.unlink(filePath).catch(() => undefined);
   }
 };
