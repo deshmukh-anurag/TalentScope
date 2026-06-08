@@ -45,6 +45,16 @@ const EMPTY_PROFILE: ProfileForm = {
 
 const STEP_LABELS = ["Upload résumé", "Confirm profile", "Interview"];
 
+// Surface the server's message from an axios-style error (it throws on 4xx/5xx),
+// falling back to the generic error message.
+const uploadErrorMessage = (err: unknown): string => {
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const serverMsg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+    if (serverMsg) return serverMsg;
+  }
+  return err instanceof Error ? err.message : "Failed to upload résumé. Please try again.";
+};
+
 function StepIndicator({ step }: { step: Step }) {
   return (
     <div className="mx-auto mb-8 flex max-w-md items-center justify-between">
@@ -175,7 +185,7 @@ export const InterviewPage = () => {
       });
       setCurrentStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload résumé. Please try again.");
+      setError(uploadErrorMessage(err));
     } finally {
       setLoading(false);
     }
