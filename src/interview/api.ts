@@ -6,6 +6,7 @@
 // inject the multer middleware here.
 import multer from "multer";
 import type { MiddlewareConfigFn } from "wasp/server";
+import type { UploadResumeAPI } from "wasp/server/api";
 import fs from "fs";
 import path from "path";
 import { extractTextFromFile, parseResume } from "./resumeParser";
@@ -61,12 +62,7 @@ const errMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
 
 // Express handler — multer has already placed the file on req.file.
-export const uploadResumeAPI = async (
-  req: { file?: { path: string; mimetype: string; originalname: string; size: number } },
-  res: {
-    status: (code: number) => { json: (body: unknown) => unknown };
-  }
-) => {
+export const uploadResumeAPI: UploadResumeAPI = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
