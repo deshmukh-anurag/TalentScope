@@ -1,11 +1,12 @@
 import "./App.css";
+import { Outlet } from "react-router";
 import { Header } from "./shared/components/Header";
 
-export function App({ children }: { children: React.ReactNode }) {
+export function App() {
   return (
     <main className="flex min-h-screen w-full flex-col bg-neutral-50 text-neutral-800">
       <Header />
-      {children}
+      <Outlet />
     </main>
   );
 }
